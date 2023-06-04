@@ -9,7 +9,11 @@ packages = [{include = "chrome_dino_game_rl"}]
 
 [tool.poetry.dependencies]
 python = "3.11.*"
+gymnasium = "^0.28.1"
 
+[tool.pyright]
+venvPath = "/Users/aome510/Library/Caches/pypoetry/virtualenvs/"
+venv = "chrome-dino-game-rl-I4G6ctY3-py3.11"
 
 [build-system]
 requires = ["poetry-core"]
