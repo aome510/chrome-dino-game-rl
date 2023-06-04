@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "chrome-dino-game-rl"
+version = "0.1.0"
+description = "Play Chrome's Dinosuar Game with Reinforcement Learning"
+authors = ["Thang Pham <phamducthang1234@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "chrome_dino_game_rl"}]
+
+[tool.poetry.dependencies]
+python = "3.11.*"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
