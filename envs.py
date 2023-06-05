@@ -64,6 +64,12 @@ class Assets:
             pygame.image.load(os.path.join("assets", "SmallCactus3.png")),
         ]
 
+        # bird
+        self.birds = [
+            pygame.image.load(os.path.join("assets", "Bird1.png")),
+            pygame.image.load(os.path.join("assets", "Bird2.png")),
+        ]
+
 
 class EnvObject(ABC):
     def __init__(self, assets: Assets, *args, **kwargs):
@@ -79,6 +85,36 @@ class EnvObject(ABC):
 class Obstacle(EnvObject, ABC):
     def collide(self, other: pygame.Rect) -> bool:
         return False
+
+    def is_inside(self) -> bool:
+        return False
+
+
+class Bird(Obstacle):
+    def __init__(self, assets: Assets):
+        self._assets = assets.birds
+        self._rect = self._assets[0].get_rect()
+        self._rect.x = WINDOW_SIZE[0]
+        self._rect.y = WINDOW_SIZE[1] // 2
+
+    def step(self, speed: int):
+        self._rect.x -= speed
+        self._assets[0], self._assets[1] = (
+            self._assets[1],
+            self._assets[0],
+        )
+
+    def collide(self, other: pygame.Rect) -> bool:
+        return self._rect.colliderect(other)
+
+    def is_inside(self) -> bool:
+        return self._rect.x + self._assets[0].get_width() > 0
+
+    def render(self, canvas: pygame.Surface):
+        canvas.blit(
+            self._assets[0],
+            self._rect,
+        )
 
 
 class Cactus(Obstacle):
@@ -235,7 +271,7 @@ class Env(gym.Env):
         # Initialize environment's objects' states
         self._track = Track(self._assets)
         self._dino = Dino(self._assets)
-        self._obstacles: list[Cactus] = []
+        self._obstacles: list[Obstacle] = []
 
         # Initialize `pygame` data
         self._window = None
@@ -268,7 +304,7 @@ class Env(gym.Env):
 
     def step(self, action: Action) -> tuple[Observation, float, bool, bool, dict]:
         terminated = False
-        reward = 0.0
+        reward = 1.0
         obs = self._get_obs()
         info = self._get_info()
 
@@ -290,6 +326,7 @@ class Env(gym.Env):
         _, dino_rect = self._dino.get_data()
         for o in self._obstacles:
             if o.collide(dino_rect):
+                reward = 0.0
                 terminated = True
 
         # Should we spawn a new obstacle?
@@ -303,6 +340,9 @@ class Env(gym.Env):
             self._obstacles.append(Cactus(self._assets, id))
 
             self._obstacle_gap = 0
+
+        if self._frame % 20 == 0 and self.np_random.choice(2, 1, p=[0.9, 0.1])[0]:
+            self._obstacles.append(Bird(self._assets))
 
         if self.render_mode == RenderMode.HUMAN:
             self._render_frame()
