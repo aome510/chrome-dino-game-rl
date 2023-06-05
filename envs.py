@@ -8,15 +8,24 @@ import pygame
 from gymnasium.envs.registration import register
 
 WINDOW_SIZE = (1024, 512)
+JUMP_DURATION = 5
+JUMP_OFFSETS = [0, 90, 150, 180, 150, 90]
 
 
 class Observation(TypedDict):
     agent: np.ndarray
 
 
-class Action(enum.Enum):
-    UP = 0
-    DOWN = 1
+class Action(int, enum.Enum):
+    STAND = 0
+    JUMP = 1
+    DUCK = 2
+
+
+class DinoState(int, enum.Enum):
+    STAND = 0
+    JUMP = 1
+    DUCK = 2
 
 
 class RenderMode(str, enum.Enum):
@@ -31,6 +40,9 @@ class Assets:
         # dino assets
         self.dino_run1 = pygame.image.load(os.path.join("assets", "DinoRun1.png"))
         self.dino_run2 = pygame.image.load(os.path.join("assets", "DinoRun2.png"))
+        self.dino_duck1 = pygame.image.load(os.path.join("assets", "DinoDuck1.png"))
+        self.dino_duck2 = pygame.image.load(os.path.join("assets", "DinoDuck2.png"))
+        self.dino_jump = pygame.image.load(os.path.join("assets", "DinoJump.png"))
 
 
 class EnvObject(ABC):
@@ -47,18 +59,64 @@ class EnvObject(ABC):
 class Dino(EnvObject):
     def __init__(self, assets: Assets):
         self._run_assets = [assets.dino_run1, assets.dino_run2]
+        self._duck_assets = [assets.dino_duck1, assets.dino_duck2]
+        self._jump_asset = assets.dino_jump
 
-    def step(self):
+        self._jump_timer = 0
+        self._state = DinoState.STAND
+
+    def step(self, action: Action):
         self._run_assets[0], self._run_assets[1] = (
             self._run_assets[1],
             self._run_assets[0],
         )
+        self._duck_assets[0], self._duck_assets[1] = (
+            self._duck_assets[1],
+            self._duck_assets[0],
+        )
+
+        # Check if the jump animation is finished
+        if self._state == DinoState.JUMP:
+            self._jump_timer -= 1
+            if self._jump_timer < 0:
+                self._state = DinoState.STAND
+
+        # If dino is not jumping, transition to a new state based on the action
+        if self._state != DinoState.JUMP:
+            match action:
+                case Action.STAND:
+                    self._state = DinoState.STAND
+                case Action.JUMP:
+                    self._state = DinoState.JUMP
+                    self._jump_timer = JUMP_DURATION
+                case Action.DUCK:
+                    self._state = DinoState.DUCK
+
+    def _get_jump_offset(self) -> int:
+        return JUMP_OFFSETS[self._jump_timer]
 
     def render(self, canvas: pygame.Surface):
-        canvas.blit(
-            self._run_assets[0],
-            (50, WINDOW_SIZE[1] - self._run_assets[0].get_height()),
-        )
+        match self._state:
+            case DinoState.STAND:
+                canvas.blit(
+                    self._run_assets[0],
+                    (50, WINDOW_SIZE[1] - self._run_assets[0].get_height()),
+                )
+            case DinoState.JUMP:
+                canvas.blit(
+                    self._jump_asset,
+                    (
+                        50,
+                        WINDOW_SIZE[1]
+                        - self._get_jump_offset()
+                        - self._jump_asset.get_height(),
+                    ),
+                )
+            case DinoState.DUCK:
+                canvas.blit(
+                    self._duck_assets[0],
+                    (50, WINDOW_SIZE[1] - self._duck_assets[0].get_height()),
+                )
 
 
 class Track(EnvObject):
@@ -166,7 +224,7 @@ class Env(gym.Env):
             self._speed += 1
 
         self._track.step(self._speed)
-        self._dino.step()
+        self._dino.step(action)
 
         if self.render_mode == RenderMode.HUMAN:
             self._render_frame()
