@@ -7,10 +7,14 @@ import numpy as np
 import pygame
 from gymnasium.envs.registration import register
 
+# environment's constants
 WINDOW_SIZE = (1024, 512)
-JUMP_DURATION = 11
+JUMP_DURATION = 12
 JUMP_VEL = 100
-BASE_OBSTACLE_SPAWN_PROB = 0.3
+OBSTACLE_MIN_GAP = 400
+MAX_SPEED = 100
+MAX_SPAWN_PROB = 0.7
+BASE_SPAWN_PROB = 0.3
 RENDER_FPS = 15
 
 
@@ -72,21 +76,31 @@ class EnvObject(ABC):
         pass
 
 
-class Cactus(EnvObject):
+class Obstacle(EnvObject, ABC):
+    def collide(self, other: pygame.Rect) -> bool:
+        return False
+
+
+class Cactus(Obstacle):
     def __init__(self, assets: Assets, id: int):
         self._asset = assets.cactuses[id]
-        self._x = WINDOW_SIZE[0]
+        self._rect = self._asset.get_rect()
+        self._rect.x = WINDOW_SIZE[0]
+        self._rect.y = WINDOW_SIZE[1] - self._asset.get_height() - 7
 
     def step(self, speed: int):
-        self._x -= speed
+        self._rect.x -= speed
+
+    def collide(self, other: pygame.Rect) -> bool:
+        return self._rect.colliderect(other)
 
     def is_inside(self) -> bool:
-        return self._x + self._asset.get_width() > 0
+        return self._rect.x + self._asset.get_width() > 0
 
     def render(self, canvas: pygame.Surface):
         canvas.blit(
             self._asset,
-            (self._x, WINDOW_SIZE[1] - self._asset.get_height() - 7),
+            self._rect,
         )
 
 
@@ -126,6 +140,22 @@ class Dino(EnvObject):
                 case Action.DUCK:
                     self._state = DinoState.DUCK
 
+    def get_data(self) -> tuple[pygame.Surface, pygame.Rect]:
+        match self._state:
+            case DinoState.STAND:
+                asset = self._run_assets[0]
+                y = WINDOW_SIZE[1] - asset.get_height()
+            case DinoState.JUMP:
+                asset = self._jump_asset
+                y = WINDOW_SIZE[1] - self._get_jump_offset() - asset.get_height()
+            case DinoState.DUCK:
+                asset = self._duck_assets[0]
+                y = WINDOW_SIZE[1] - asset.get_height()
+
+        rect = pygame.Rect(50, y, asset.get_width(), asset.get_height())
+
+        return asset, rect
+
     def _get_jump_offset(self) -> int:
         a = -JUMP_VEL / (JUMP_DURATION / 2)
         t = JUMP_DURATION - self._jump_timer
@@ -133,27 +163,8 @@ class Dino(EnvObject):
         return d
 
     def render(self, canvas: pygame.Surface):
-        match self._state:
-            case DinoState.STAND:
-                canvas.blit(
-                    self._run_assets[0],
-                    (50, WINDOW_SIZE[1] - self._run_assets[0].get_height()),
-                )
-            case DinoState.JUMP:
-                canvas.blit(
-                    self._jump_asset,
-                    (
-                        50,
-                        WINDOW_SIZE[1]
-                        - self._get_jump_offset()
-                        - self._jump_asset.get_height(),
-                    ),
-                )
-            case DinoState.DUCK:
-                canvas.blit(
-                    self._duck_assets[0],
-                    (50, WINDOW_SIZE[1] - self._duck_assets[0].get_height()),
-                )
+        asset, rect = self.get_data()
+        canvas.blit(asset, rect)
 
 
 class Track(EnvObject):
@@ -218,7 +229,8 @@ class Env(gym.Env):
 
         self._frame = 0
         self._speed = 20
-        self._spawn_prob = BASE_OBSTACLE_SPAWN_PROB
+        self._spawn_prob = BASE_SPAWN_PROB
+        self._obstacle_gap = OBSTACLE_MIN_GAP
 
         # Initialize environment's objects' states
         self._track = Track(self._assets)
@@ -261,12 +273,11 @@ class Env(gym.Env):
         info = self._get_info()
 
         self._frame += 1
+        self._obstacle_gap += self._speed
         # increase the difficulty of the game every 20 frames
         if self._frame % 20 == 0:
-            self._speed += 1
-            self._spawn_prob = min(0.7, self._spawn_prob * 1.01)
-
-            print(f"New speed: {self._speed}, new prob: {self._spawn_prob}")
+            self._speed = min(MAX_SPEED, self._speed + 1)
+            self._spawn_prob = min(MAX_SPAWN_PROB, self._spawn_prob * 1.01)
 
         self._track.step(self._speed)
         self._dino.step(action)
@@ -276,15 +287,22 @@ class Env(gym.Env):
         # Filter inside obstacles after each step
         self._obstacles = [o for o in self._obstacles if o.is_inside()]
 
+        _, dino_rect = self._dino.get_data()
+        for o in self._obstacles:
+            if o.collide(dino_rect):
+                terminated = True
+
         # Should we spawn a new obstacle?
         if (
-            self._frame % 20 == 0
+            self._obstacle_gap > max(OBSTACLE_MIN_GAP, JUMP_DURATION * self._speed)
             and self.np_random.choice(2, 1, p=[1 - self._spawn_prob, self._spawn_prob])[
                 0
             ]
         ):
             id = self.np_random.choice(len(self._assets.cactuses), 1)[0]
             self._obstacles.append(Cactus(self._assets, id))
+
+            self._obstacle_gap = 0
 
         if self.render_mode == RenderMode.HUMAN:
             self._render_frame()

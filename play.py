@@ -13,6 +13,8 @@ for _ in range(1000):
     elif userInput[pygame.K_DOWN]:
         action = envs.Action.DUCK
 
-    env.step(action)
+    _, _, terminated, _, _ = env.step(action)
+    if terminated:
+        break
 
 env.close()
