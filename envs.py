@@ -1,3 +1,4 @@
+from abc import ABC
 import enum
 import os
 from typing import Any, TypedDict
@@ -5,6 +6,8 @@ import gymnasium as gym
 import numpy as np
 import pygame
 from gymnasium.envs.registration import register
+
+WINDOW_SIZE = (1024, 512)
 
 
 class Observation(TypedDict):
@@ -30,48 +33,69 @@ class Assets:
         self.dino_run2 = pygame.image.load(os.path.join("assets", "DinoRun2.png"))
 
 
-class Dino:
-    def __init__(self):
-        ...
+class EnvObject(ABC):
+    def __init__(self, assets: Assets, *args, **kwargs):
+        pass
+
+    def step(self, *args, **kwargs):
+        pass
+
+    def render(self, canvas: pygame.Surface, *args, **kwargs):
+        pass
+
+
+class Dino(EnvObject):
+    def __init__(self, assets: Assets):
+        self._run_assets = [assets.dino_run1, assets.dino_run2]
+
+    def step(self):
+        self._run_assets[0], self._run_assets[1] = (
+            self._run_assets[1],
+            self._run_assets[0],
+        )
 
     def render(self, canvas: pygame.Surface):
-        ...
+        canvas.blit(
+            self._run_assets[0],
+            (50, WINDOW_SIZE[1] - self._run_assets[0].get_height()),
+        )
 
 
-class Track:
+class Track(EnvObject):
     def __init__(self, assets: Assets):
-        self.assets = assets
-        self.track_offset_x = 0
-        self.track_w = self.assets.track.get_width()
-        self.track_h = self.assets.track.get_height()
+        self._asset = assets.track
+
+        self._track_offset_x = 0
+        self._track_w = self._asset.get_width()
+        self._track_h = self._asset.get_height()
 
     def step(self, speed: int):
         # Negative offset to slide the running track image to the left
-        self.track_offset_x -= speed
+        self._track_offset_x -= speed
 
-    def render(self, canvas: pygame.Surface, window_size: tuple[int, int]):
+    def render(self, canvas: pygame.Surface):
         # Render the running track image moved to the left by `track_offset_x`
         canvas.blit(
-            self.assets.track,
-            (self.track_offset_x, window_size[1] - self.track_h),
+            self._asset,
+            (self._track_offset_x, WINDOW_SIZE[1] - self._track_h),
         )
 
         # If the moved image doesn't cover the screen, render the left space
         # with a second image to create a "loop" effect.
-        if self.track_offset_x + self.track_w < window_size[0]:
+        if self._track_offset_x + self._track_w < WINDOW_SIZE[0]:
             # Find the starting position to render the second image
             # -10 here because the running track image starts with a small gap
-            start_x = self.track_offset_x + self.track_w - 10
+            start_x = self._track_offset_x + self._track_w - 10
             canvas.blit(
-                self.assets.track,
-                (start_x, window_size[1] - self.track_h),
+                self._asset,
+                (start_x, WINDOW_SIZE[1] - self._track_h),
             )
 
             # If the starting position is negative, which means the moved image
             # doesn't intersect with the screen, start rendering a new image with
             # a new offset equal to the starting position
             if start_x <= 0:
-                self.track_offset_x = start_x
+                self._track_offset_x = start_x
 
 
 class Env(gym.Env):
@@ -94,13 +118,13 @@ class Env(gym.Env):
 
         # Other (private) fields
         self._assets = Assets()
-        self._window_size = window_size
 
         self._score = 0
         self._speed = 20
 
         # Initialize environment's objects' states
         self._track = Track(self._assets)
+        self._dino = Dino(self._assets)
 
         # Initialize `pygame` data
         self._window = None
@@ -110,7 +134,7 @@ class Env(gym.Env):
             pygame.init()
             pygame.display.init()
 
-            self._window = pygame.display.set_mode(self._window_size)
+            self._window = pygame.display.set_mode(WINDOW_SIZE)
             self._clock = pygame.time.Clock()
 
         super().__init__()
@@ -142,6 +166,7 @@ class Env(gym.Env):
             self._speed += 1
 
         self._track.step(self._speed)
+        self._dino.step()
 
         if self.render_mode == RenderMode.HUMAN:
             self._render_frame()
@@ -153,10 +178,11 @@ class Env(gym.Env):
             return self._render_frame()
 
     def _render_frame(self):
-        canvas = pygame.Surface(self._window_size)
+        canvas = pygame.Surface(WINDOW_SIZE)
         canvas.fill((255, 255, 255))
 
-        self._track.render(canvas, self._window_size)
+        self._track.render(canvas)
+        self._dino.render(canvas)
 
         if self._window is not None and self._clock is not None:
             self._window.blit(canvas, canvas.get_rect())
