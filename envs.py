@@ -10,7 +10,7 @@ from gymnasium.envs.registration import register
 WINDOW_SIZE = (1024, 512)
 JUMP_DURATION = 11
 JUMP_VEL = 100
-OBSTACLE_SPAWN_PROB = 0.3
+BASE_OBSTACLE_SPAWN_PROB = 0.3
 RENDER_FPS = 15
 
 
@@ -130,7 +130,6 @@ class Dino(EnvObject):
         a = -JUMP_VEL / (JUMP_DURATION / 2)
         t = JUMP_DURATION - self._jump_timer
         d = int(JUMP_VEL * t + 0.5 * a * (t**2))
-        print(a, t, d)
         return d
 
     def render(self, canvas: pygame.Surface):
@@ -217,8 +216,9 @@ class Env(gym.Env):
         # Other (private) fields
         self._assets = Assets()
 
-        self._score = 0
+        self._frame = 0
         self._speed = 20
+        self._spawn_prob = BASE_OBSTACLE_SPAWN_PROB
 
         # Initialize environment's objects' states
         self._track = Track(self._assets)
@@ -260,9 +260,13 @@ class Env(gym.Env):
         obs = self._get_obs()
         info = self._get_info()
 
-        self._score += 1
-        if self._score % 100 == 0:
+        self._frame += 1
+        # increase the difficulty of the game every 20 frames
+        if self._frame % 20 == 0:
             self._speed += 1
+            self._spawn_prob = min(0.7, self._spawn_prob * 1.01)
+
+            print(f"New speed: {self._speed}, new prob: {self._spawn_prob}")
 
         self._track.step(self._speed)
         self._dino.step(action)
@@ -274,10 +278,10 @@ class Env(gym.Env):
 
         # Should we spawn a new obstacle?
         if (
-            self._score % 20 == 0
-            and self.np_random.choice(
-                2, 1, p=[1 - OBSTACLE_SPAWN_PROB, OBSTACLE_SPAWN_PROB]
-            )[0]
+            self._frame % 20 == 0
+            and self.np_random.choice(2, 1, p=[1 - self._spawn_prob, self._spawn_prob])[
+                0
+            ]
         ):
             id = self.np_random.choice(len(self._assets.cactuses), 1)[0]
             self._obstacles.append(Cactus(self._assets, id))
