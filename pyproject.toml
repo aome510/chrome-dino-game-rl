@@ -11,6 +11,8 @@ packages = [{include = "chrome_dino_game_rl"}]
 python = "3.11.*"
 gymnasium = "^0.28.1"
 pygame = "^2.4.0"
+torch = "^2.0.1"
+torchvision = "^0.15.2"
 
 [tool.pyright]
 venvPath = "/Users/aome510/Library/Caches/pypoetry/virtualenvs/"
