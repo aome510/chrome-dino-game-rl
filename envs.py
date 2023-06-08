@@ -18,10 +18,6 @@ BASE_SPAWN_PROB = 0.3
 RENDER_FPS = 15
 
 
-class Observation(TypedDict):
-    agent: np.ndarray
-
-
 class Action(int, enum.Enum):
     STAND = 0
     JUMP = 1
@@ -254,24 +250,12 @@ class Env(gym.Env):
         self.render_mode = render_mode
 
         self.action_space = gym.spaces.Discrete(2)
-        self.observation_space = gym.spaces.Dict(
-            {
-                "agent": gym.spaces.Box(0, 200, shape=(2,), dtype=np.int32),
-            }
+        # the observation space is the rgb image of the current frame
+        self.observation_space = gym.spaces.Box(
+            0, 255, shape=(WINDOW_SIZE[0], WINDOW_SIZE[1], 3), dtype=np.uint8
         )
 
-        # Other (private) fields
         self._assets = Assets()
-
-        self._frame = 0
-        self._speed = 20
-        self._spawn_prob = BASE_SPAWN_PROB
-        self._obstacle_cnt = OBSTACLE_MIN_CNT
-
-        # Initialize environment's objects' states
-        self._track = Track(self._assets)
-        self._dino = Dino(self._assets)
-        self._obstacles: list[Obstacle] = []
 
         # Initialize `pygame` data
         self._window = None
@@ -284,29 +268,34 @@ class Env(gym.Env):
             self._window = pygame.display.set_mode(WINDOW_SIZE)
             self._clock = pygame.time.Clock()
 
+        self._init_game_data()
+
         super().__init__()
 
-    def _get_obs(self) -> Observation:
-        return {"agent": np.zeros((2,), dtype=np.int32)}
+    def _init_game_data(self):
+        """Initialize game's data, which should be re-initialized when the environment is reset"""
+        self._frame = 0
+        self._speed = 20
+        self._spawn_prob = BASE_SPAWN_PROB
+        self._obstacle_cnt = OBSTACLE_MIN_CNT
 
-    def _get_info(self) -> dict:
-        return {}
+        # Initialize environment's objects' states
+        self._track = Track(self._assets)
+        self._dino = Dino(self._assets)
+        self._obstacles: list[Obstacle] = []
 
     def reset(
         self, seed: int | None = None, options: dict[str, Any] | None = None
-    ) -> tuple[Observation, dict]:
+    ) -> tuple[np.ndarray, dict]:
         super().reset(seed=seed, options=options)
 
-        obs = self._get_obs()
-        info = self._get_info()
+        obs = self._render_frame()
 
-        return obs, info
+        return obs, {}
 
-    def step(self, action: Action) -> tuple[Observation, float, bool, bool, dict]:
+    def step(self, action: Action) -> tuple[np.ndarray, float, bool, bool, dict]:
         terminated = False
         reward = 1.0
-        obs = self._get_obs()
-        info = self._get_info()
 
         self._frame += 1
         self._obstacle_cnt += self._speed
@@ -342,16 +331,15 @@ class Env(gym.Env):
 
             self._obstacle_cnt = 0
 
-        if self.render_mode == RenderMode.HUMAN:
-            self._render_frame()
+        obs = self._render_frame()
 
-        return obs, reward, terminated, False, info
+        return obs, reward, terminated, False, {}
 
     def render(self):
         if self.render_mode == RenderMode.RGB:
             return self._render_frame()
 
-    def _render_frame(self):
+    def _render_frame(self) -> np.ndarray:
         canvas = pygame.Surface(WINDOW_SIZE)
         canvas.fill((255, 255, 255))
 
@@ -367,11 +355,9 @@ class Env(gym.Env):
             pygame.display.update()
 
             self._clock.tick(self.metadata["render_fps"])
-        else:
-            # return the canvas as a rgb array
-            return np.transpose(
-                np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2)
-            )
+
+        # return the canvas as a rgb array
+        return np.array(pygame.surfarray.pixels3d(canvas))
 
     def close(self):
         if self._window is not None:
