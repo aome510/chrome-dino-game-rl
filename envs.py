@@ -11,7 +11,7 @@ from gymnasium.envs.registration import register
 WINDOW_SIZE = (1024, 512)
 JUMP_DURATION = 12
 JUMP_VEL = 100
-OBSTACLE_MIN_GAP = 400
+OBSTACLE_MIN_CNT = 400
 MAX_SPEED = 100
 MAX_SPAWN_PROB = 0.7
 BASE_SPAWN_PROB = 0.3
@@ -95,7 +95,7 @@ class Bird(Obstacle):
         self._assets = assets.birds
         self._rect = self._assets[0].get_rect()
         self._rect.x = WINDOW_SIZE[0]
-        self._rect.y = WINDOW_SIZE[1] // 2
+        self._rect.y = 375
 
     def step(self, speed: int):
         self._rect.x -= speed
@@ -266,7 +266,7 @@ class Env(gym.Env):
         self._frame = 0
         self._speed = 20
         self._spawn_prob = BASE_SPAWN_PROB
-        self._obstacle_gap = OBSTACLE_MIN_GAP
+        self._obstacle_cnt = OBSTACLE_MIN_CNT
 
         # Initialize environment's objects' states
         self._track = Track(self._assets)
@@ -309,7 +309,7 @@ class Env(gym.Env):
         info = self._get_info()
 
         self._frame += 1
-        self._obstacle_gap += self._speed
+        self._obstacle_cnt += self._speed
         # increase the difficulty of the game every 20 frames
         if self._frame % 20 == 0:
             self._speed = min(MAX_SPEED, self._speed + 1)
@@ -330,19 +330,17 @@ class Env(gym.Env):
                 terminated = True
 
         # Should we spawn a new obstacle?
-        if (
-            self._obstacle_gap > max(OBSTACLE_MIN_GAP, JUMP_DURATION * self._speed)
-            and self.np_random.choice(2, 1, p=[1 - self._spawn_prob, self._spawn_prob])[
+        if self._obstacle_cnt > max(OBSTACLE_MIN_CNT, JUMP_DURATION * self._speed):
+            if self.np_random.choice(2, 1, p=[1 - self._spawn_prob, self._spawn_prob])[
                 0
-            ]
-        ):
-            id = self.np_random.choice(len(self._assets.cactuses), 1)[0]
-            self._obstacles.append(Cactus(self._assets, id))
+            ]:
+                id = self.np_random.choice(len(self._assets.cactuses), 1)[0]
+                self._obstacles.append(Cactus(self._assets, id))
 
-            self._obstacle_gap = 0
+            elif self.np_random.choice(2, 1, p=[0.9, 0.1])[0]:
+                self._obstacles.append(Bird(self._assets))
 
-        if self._frame % 20 == 0 and self.np_random.choice(2, 1, p=[0.9, 0.1])[0]:
-            self._obstacles.append(Bird(self._assets))
+            self._obstacle_cnt = 0
 
         if self.render_mode == RenderMode.HUMAN:
             self._render_frame()
