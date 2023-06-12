@@ -289,6 +289,8 @@ class Env(gym.Env):
     ) -> tuple[np.ndarray, dict]:
         super().reset(seed=seed, options=options)
 
+        self._init_game_data()
+
         obs = self._render_frame()
 
         return obs, {}
