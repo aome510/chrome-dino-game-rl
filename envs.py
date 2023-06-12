@@ -1,7 +1,7 @@
 from abc import ABC
 import enum
 import os
-from typing import Any, TypedDict
+from typing import Any
 import gymnasium as gym
 import numpy as np
 import pygame
@@ -252,7 +252,7 @@ class Env(gym.Env):
         self.action_space = gym.spaces.Discrete(2)
         # the observation space is the rgb image of the current frame
         self.observation_space = gym.spaces.Box(
-            0, 255, shape=(WINDOW_SIZE[0], WINDOW_SIZE[1], 3), dtype=np.uint8
+            0, 255, shape=(WINDOW_SIZE[1], WINDOW_SIZE[0], 3), dtype=np.uint8
         )
 
         self._assets = Assets()
@@ -357,7 +357,7 @@ class Env(gym.Env):
             self._clock.tick(self.metadata["render_fps"])
 
         # return the canvas as a rgb array
-        return np.array(pygame.surfarray.pixels3d(canvas))
+        return np.transpose(np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2))
 
     def close(self):
         if self._window is not None:

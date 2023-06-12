@@ -6,7 +6,7 @@ env = gym.make("Env-v0", render_mode="human")
 env.reset()
 
 total_reward = 0.0
-for _ in range(1000):
+while True:
     userInput = pygame.key.get_pressed()
     action = envs.Action.STAND
     if userInput[pygame.K_UP] or userInput[pygame.K_SPACE]:
