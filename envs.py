@@ -249,7 +249,7 @@ class Env(gym.Env):
         # Initialize `gym.Env` required fields
         self.render_mode = render_mode
 
-        self.action_space = gym.spaces.Discrete(2)
+        self.action_space = gym.spaces.Discrete(len(list(Action)))
         # the observation space is the rgb image of the current frame
         self.observation_space = gym.spaces.Box(
             0, 255, shape=(WINDOW_SIZE[1], WINDOW_SIZE[0], 3), dtype=np.uint8
