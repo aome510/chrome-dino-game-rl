@@ -12,9 +12,11 @@ WINDOW_SIZE = (1024, 512)
 JUMP_DURATION = 12
 JUMP_VEL = 100
 OBSTACLE_MIN_CNT = 400
+TRAIN_FRAME_LIMIT = 500
 MAX_SPEED = 100
-MAX_SPAWN_PROB = 0.7
-BASE_SPAWN_PROB = 0.3
+MAX_CACTUS_SPAWN_PROB = 0.7
+BASE_CACTUS_SPAWN_PROB = 0.3
+BIRD_SPAWN_PROB = 0.2
 RENDER_FPS = 15
 
 
@@ -28,6 +30,12 @@ class DinoState(int, enum.Enum):
     STAND = 0
     JUMP = 1
     DUCK = 2
+
+
+class GameMode(str, enum.Enum):
+    NORMAL = "normal"
+    # train mode allows the agent to collide with obstacles and will get negative rewards
+    TRAIN = "train"
 
 
 class RenderMode(str, enum.Enum):
@@ -245,6 +253,7 @@ class Env(gym.Env):
     def __init__(
         self,
         render_mode: RenderMode | None,
+        game_mode: GameMode = GameMode.NORMAL,
     ) -> None:
         # Initialize `gym.Env` required fields
         self.render_mode = render_mode
@@ -254,6 +263,8 @@ class Env(gym.Env):
         self.observation_space = gym.spaces.Box(
             0, 255, shape=(WINDOW_SIZE[1], WINDOW_SIZE[0], 3), dtype=np.uint8
         )
+
+        self._game_mode = game_mode
 
         self._assets = Assets()
 
@@ -276,7 +287,7 @@ class Env(gym.Env):
         """Initialize game's data, which should be re-initialized when the environment is reset"""
         self._frame = 0
         self._speed = 20
-        self._spawn_prob = BASE_SPAWN_PROB
+        self._spawn_prob = BASE_CACTUS_SPAWN_PROB
         self._obstacle_cnt = OBSTACLE_MIN_CNT
 
         # Initialize environment's objects' states
@@ -304,7 +315,7 @@ class Env(gym.Env):
         # increase the difficulty of the game every 20 frames
         if self._frame % 20 == 0:
             self._speed = min(MAX_SPEED, self._speed + 1)
-            self._spawn_prob = min(MAX_SPAWN_PROB, self._spawn_prob * 1.01)
+            self._spawn_prob = min(MAX_CACTUS_SPAWN_PROB, self._spawn_prob * 1.01)
 
         self._track.step(self._speed)
         self._dino.step(action)
@@ -314,13 +325,28 @@ class Env(gym.Env):
         # Filter inside obstacles after each step
         self._obstacles = [o for o in self._obstacles if o.is_inside()]
 
+        # Check if the dinosaur collides with an obstacle
         _, dino_rect = self._dino.get_data()
         for o in self._obstacles:
             if o.collide(dino_rect):
-                reward = 0.0
-                terminated = True
+                match self._game_mode:
+                    case GameMode.NORMAL:
+                        reward = 0.0
+                        terminated = True
+                    case GameMode.TRAIN:
+                        reward = -100.0
+
+        if self._game_mode == GameMode.TRAIN and self._frame >= TRAIN_FRAME_LIMIT:
+            terminated = True
 
         # Should we spawn a new obstacle?
+        self._spawn_obstacle_maybe()
+
+        obs = self._render_frame()
+
+        return obs, reward, terminated, False, {}
+
+    def _spawn_obstacle_maybe(self):
         if self._obstacle_cnt > max(OBSTACLE_MIN_CNT, JUMP_DURATION * self._speed):
             if self.np_random.choice(2, 1, p=[1 - self._spawn_prob, self._spawn_prob])[
                 0
@@ -332,10 +358,6 @@ class Env(gym.Env):
                 self._obstacles.append(Bird(self._assets))
 
             self._obstacle_cnt = 0
-
-        obs = self._render_frame()
-
-        return obs, reward, terminated, False, {}
 
     def render(self):
         if self.render_mode == RenderMode.RGB:
