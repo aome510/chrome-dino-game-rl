@@ -1,14 +1,16 @@
 from abc import ABC
+from collections import deque
 import enum
 import os
 from typing import Any
+from PIL import Image
 import gymnasium as gym
 import numpy as np
 import pygame
 from gymnasium.envs.registration import register
 
 # environment's constants
-WINDOW_SIZE = (1024, 512)
+WINDOW_SIZE = (1024, 512)  # (w, h)
 JUMP_DURATION = 12
 JUMP_VEL = 100
 OBSTACLE_MIN_CNT = 400
@@ -403,6 +405,64 @@ class Env(gym.Env):
         if self._window is not None:
             pygame.display.quit()
             pygame.quit()
+
+
+class Wrapper(gym.Wrapper):
+    def __init__(self, env: gym.Env, k=4, image_size=(128, 64)):
+        super().__init__(env)
+
+        self.env = env
+        self.k = k
+        self.image_size = image_size
+
+        obs_space = env.observation_space.shape
+        assert obs_space is not None
+        self.observation_space = gym.spaces.Box(
+            low=0,
+            high=255,
+            shape=(self.k, self.image_size[1], self.image_size[0]),
+            dtype=np.uint8,
+        )
+
+        self.frames = deque([], maxlen=self.k)
+
+    def _transform(self, obs: np.ndarray) -> np.ndarray:
+        # Convert the observation image from the environment to
+        # gray scale and resize it to a corresponding size
+        return np.array(Image.fromarray(obs).convert("L").resize(self.image_size))
+
+    def _get_obs(self) -> np.ndarray:
+        # Stack the last "k" frames into a single "np.ndarray"
+        assert len(self.frames) == self.k
+        return np.stack(self.frames)
+
+    def reset(self) -> tuple[np.ndarray, dict]:
+        self.frames = deque([], maxlen=self.k)
+
+        obs, _ = self.env.reset()
+        obs = self._transform(obs)
+
+        for _ in range(self.k):
+            self.frames.append(obs)
+
+        return self._get_obs(), {}
+
+    def step(self, action: Action) -> tuple[np.ndarray, float, bool, bool, dict]:
+        total_reward = 0.0
+        terminated = False
+
+        for _ in range(self.k):
+            obs, reward, term, *_ = self.env.step(action)
+            obs = self._transform(obs)
+
+            self.frames.append(obs)
+
+            total_reward += float(reward)
+            if term:
+                terminated = True
+                break
+
+        return self._get_obs(), total_reward, terminated, False, {}
 
 
 register(
