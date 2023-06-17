@@ -51,12 +51,17 @@ class Assets:
         self.dino_runs = [
             pygame.image.load(os.path.join("assets", "DinoRun1.png")),
             pygame.image.load(os.path.join("assets", "DinoRun2.png")),
+            # pygame.image.load(os.path.join("assets", "NyanCat1.png")),
+            # pygame.image.load(os.path.join("assets", "NyanCat2.png")),
         ]
         self.dino_ducks = [
+            # pygame.image.load(os.path.join("assets", "NyanCat1.png")),
+            # pygame.image.load(os.path.join("assets", "NyanCat2.png")),
             pygame.image.load(os.path.join("assets", "DinoDuck1.png")),
             pygame.image.load(os.path.join("assets", "DinoDuck2.png")),
         ]
         self.dino_jump = pygame.image.load(os.path.join("assets", "DinoJump.png"))
+        # self.dino_jump = pygame.image.load(os.path.join("assets", "NyanCat1.png"))
 
         # cactus
         self.cactuses = [
@@ -76,6 +81,8 @@ class Assets:
 
 
 class EnvObject(ABC):
+    rect: pygame.Rect
+
     def __init__(self, assets: Assets, *args, **kwargs):
         pass
 
@@ -87,6 +94,8 @@ class EnvObject(ABC):
 
 
 class Obstacle(EnvObject, ABC):
+    needs_collision_check = True
+
     def collide(self, other: pygame.Rect) -> bool:
         return False
 
@@ -97,50 +106,50 @@ class Obstacle(EnvObject, ABC):
 class Bird(Obstacle):
     def __init__(self, assets: Assets):
         self._assets = assets.birds
-        self._rect = self._assets[0].get_rect()
-        self._rect.x = WINDOW_SIZE[0]
-        self._rect.y = 375
+        self.rect = self._assets[0].get_rect()
+        self.rect.x = WINDOW_SIZE[0]
+        self.rect.y = 375
 
     def step(self, speed: int):
-        self._rect.x -= speed
+        self.rect.x -= speed
         self._assets[0], self._assets[1] = (
             self._assets[1],
             self._assets[0],
         )
 
     def collide(self, other: pygame.Rect) -> bool:
-        return self._rect.colliderect(other)
+        return self.rect.colliderect(other)
 
     def is_inside(self) -> bool:
-        return self._rect.x + self._assets[0].get_width() > 0
+        return self.rect.x + self._assets[0].get_width() > 0
 
     def render(self, canvas: pygame.Surface):
         canvas.blit(
             self._assets[0],
-            self._rect,
+            self.rect,
         )
 
 
 class Cactus(Obstacle):
     def __init__(self, assets: Assets, id: int):
         self._asset = assets.cactuses[id]
-        self._rect = self._asset.get_rect()
-        self._rect.x = WINDOW_SIZE[0]
-        self._rect.y = WINDOW_SIZE[1] - self._asset.get_height() - 7
+        self.rect = self._asset.get_rect()
+        self.rect.x = WINDOW_SIZE[0]
+        self.rect.y = WINDOW_SIZE[1] - self._asset.get_height() - 7
 
     def step(self, speed: int):
-        self._rect.x -= speed
+        self.rect.x -= speed
 
     def collide(self, other: pygame.Rect) -> bool:
-        return self._rect.colliderect(other)
+        return self.rect.colliderect(other)
 
     def is_inside(self) -> bool:
-        return self._rect.x + self._asset.get_width() > 0
+        return self.rect.x + self._asset.get_width() > 0
 
     def render(self, canvas: pygame.Surface):
         canvas.blit(
             self._asset,
-            self._rect,
+            self.rect,
         )
 
 
@@ -151,7 +160,7 @@ class Dino(EnvObject):
         self._jump_asset = assets.dino_jump
 
         self._jump_timer = 0
-        self._state = DinoState.STAND
+        self.state = DinoState.STAND
 
     def step(self, action: Action):
         self._run_assets[0], self._run_assets[1] = (
@@ -164,24 +173,24 @@ class Dino(EnvObject):
         )
 
         # Check if the jump animation is finished
-        if self._state == DinoState.JUMP:
+        if self.state == DinoState.JUMP:
             self._jump_timer -= 1
             if self._jump_timer < 0:
-                self._state = DinoState.STAND
+                self.state = DinoState.STAND
 
         # If dino is not jumping, transition to a new state based on the action
-        if self._state != DinoState.JUMP:
+        if self.state != DinoState.JUMP:
             match action:
                 case Action.STAND:
-                    self._state = DinoState.STAND
+                    self.state = DinoState.STAND
                 case Action.JUMP:
-                    self._state = DinoState.JUMP
+                    self.state = DinoState.JUMP
                     self._jump_timer = JUMP_DURATION
                 case Action.DUCK:
-                    self._state = DinoState.DUCK
+                    self.state = DinoState.DUCK
 
     def get_data(self) -> tuple[pygame.Surface, pygame.Rect]:
-        match self._state:
+        match self.state:
             case DinoState.STAND:
                 asset = self._run_assets[0]
                 y = WINDOW_SIZE[1] - asset.get_height()
@@ -308,7 +317,7 @@ class Env(gym.Env):
 
     def step(self, action: Action) -> tuple[np.ndarray, float, bool, bool, dict]:
         terminated = False
-        reward = 1.0
+        reward = 0.0
 
         self._frame += 1
         self._obstacle_cnt += self._speed
@@ -328,13 +337,20 @@ class Env(gym.Env):
         # Check if the dinosaur collides with an obstacle
         _, dino_rect = self._dino.get_data()
         for o in self._obstacles:
+            if not o.needs_collision_check:
+                continue
             if o.collide(dino_rect):
+                o.needs_collision_check = False
                 match self._game_mode:
                     case GameMode.NORMAL:
-                        reward = 0.0
                         terminated = True
                     case GameMode.TRAIN:
-                        reward = -100.0
+                        reward -= 1.0
+            else:
+                # dino passes an obstacle without colliding with the object, give a reward
+                if dino_rect.left > o.rect.right:
+                    o.needs_collision_check = False
+                    reward += 1.0
 
         if self._game_mode == GameMode.TRAIN and self._frame >= TRAIN_FRAME_LIMIT:
             terminated = True
