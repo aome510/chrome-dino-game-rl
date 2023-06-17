@@ -1,10 +1,14 @@
+from PIL import Image
 from collections import deque, namedtuple
+import datetime
 from itertools import count
+import os
+import shutil
 import gymnasium as gym
 from torchvision.utils import torch
 import torch.nn as nn
 import random
-import envs as _
+import envs
 import numpy as np
 
 from model import DQN
@@ -37,7 +41,7 @@ class MemoryReplay(object):
 class Trainer:
     def __init__(
         self,
-        env: gym.Env,
+        env: envs.Wrapper,
         policy_net: DQN,
         target_net: DQN,
         n_episodes=1_000,
@@ -80,6 +84,14 @@ class Trainer:
             -1.0 * n_steps / eps_decay
         )
 
+        # Initialize folder to save training results
+        folder_name = datetime.datetime.now().strftime("%y-%m-%d-%H-%M")
+        folder_path = os.path.join("results", folder_name)
+        if os.path.exists(folder_path):
+            shutil.rmtree(folder_path)
+        os.makedirs(folder_path)
+        self.folder_path = folder_path
+
     def _select_action(self, state: torch.Tensor) -> torch.Tensor:
         """Select the next action given the current state following the eps-greedy policy"""
         eps = self._get_eps(self.n_steps)
@@ -87,7 +99,7 @@ class Trainer:
         if random.random() > eps:
             # exploit
             with torch.no_grad():
-                return self.policy_net(state).max(dim=1)[1][0]
+                return self.policy_net(state.unsqueeze(0)).max(dim=1)[1][0]
         else:
             # explore
             return torch.tensor(self.env.action_space.sample(), device=device)
@@ -133,7 +145,7 @@ class Trainer:
     def train(self):
         for episode_i in range(self.n_episodes):
             state, _ = self.env.reset()
-            state = state.to(device)
+            state = torch.tensor(state, device=device)
 
             total_reward = 0.0
 
@@ -142,8 +154,10 @@ class Trainer:
 
                 action = self._select_action(state)
 
-                next_state, reward, terminated, *_ = self.env.step(action.item())
-                next_state = next_state.to(device)
+                next_state, reward, terminated, *_ = self.env.step(
+                    envs.Action(action.item())
+                )
+                next_state = torch.tensor(next_state, device=device)
 
                 total_reward += float(reward)
 
@@ -177,42 +191,43 @@ class Trainer:
                 else:
                     state = next_state
 
+            if episode_i % 50 == 0:
+                self.save_obs_result(episode_i, self.env.frames)
+                self.save_model_weights(episode_i)
+
         self.env.close()
 
+    def save_obs_result(self, episode_i: int, obs_arr: list[np.ndarray]):
+        frames = [Image.fromarray(obs, "RGB") for obs in obs_arr]
+        file_path = os.path.join(self.folder_path, f"episode-{episode_i}.gif")
 
-# def save_obs_result(episode_i: int, obs_arr: list[np.ndarray], folder_path: str):
-#     frames = [Image.fromarray(obs, "RGB") for obs in obs_arr]
-#     file_path = os.path.join(folder_path, f"episode-{episode_i}.gif")
+        frames[0].save(
+            file_path,
+            save_all=True,
+            append_images=frames[1:],
+            optimize=True,
+            duration=100,
+            loop=0,
+        )
 
-#     frames[0].save(
-#         file_path,
-#         save_all=True,
-#         append_images=frames[1:],
-#         optimize=True,
-#         duration=100,
-#         loop=0,
-#     )
-
-
-# def save_model_weights(episode_i: int, net: DQN, folder_path: str):
-#     file_path = os.path.join(folder_path, f"model-{episode_i}.pth")
-#     torch.save(net, file_path)
+    def save_model_weights(self, episode_i: int):
+        file_path = os.path.join(self.folder_path, f"model-{episode_i}.pth")
+        torch.save(self.policy_net, file_path)
 
 
 if __name__ == "__main__":
     # Initialize the gym environment
     env = gym.make("Env-v0", render_mode="rgb_array", game_mode="train")
+    env = envs.Wrapper(env, k=4)
 
-    # Define the RL model
+    # Define the DQN networks
+    obs_space = env.observation_space.shape
+    assert obs_space is not None
+    in_channels = obs_space[0]
     out_channels = env.action_space.n  # type: ignore
 
-    policy_net = DQN(1, out_channels).to(device)
-    target_net = DQN(1, out_channels).to(device)
+    policy_net = DQN(in_channels, out_channels).to(device)
+    target_net = DQN(in_channels, out_channels).to(device)
 
     trainer = Trainer(env, policy_net, target_net)
-
-    # folder_name = datetime.datetime.now().strftime("%y-%m-%d-%H-%M")
-    # folder_path = os.path.join("results", folder_name)
-    # if os.path.exists(folder_path):
-    #     shutil.rmtree(folder_path)
-    # os.makedirs(folder_path)
+    trainer.train()

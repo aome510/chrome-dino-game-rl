@@ -424,26 +424,31 @@ class Wrapper(gym.Wrapper):
             dtype=np.uint8,
         )
 
-        self.frames = deque([], maxlen=self.k)
+        self.frames: list[np.ndarray] = []
+        self.stack = deque([], maxlen=self.k)
 
     def _transform(self, obs: np.ndarray) -> np.ndarray:
         # Convert the observation image from the environment to
         # gray scale and resize it to a corresponding size
-        return np.array(Image.fromarray(obs).convert("L").resize(self.image_size))
+        return np.array(
+            Image.fromarray(obs).convert("L").resize(self.image_size), dtype=np.float32
+        )
 
     def _get_obs(self) -> np.ndarray:
         # Stack the last "k" frames into a single "np.ndarray"
-        assert len(self.frames) == self.k
-        return np.stack(self.frames)
+        assert len(self.stack) == self.k
+        return np.stack(self.stack)
 
     def reset(self) -> tuple[np.ndarray, dict]:
-        self.frames = deque([], maxlen=self.k)
+        self.frames = []
+        self.stack = deque([], maxlen=self.k)
 
         obs, _ = self.env.reset()
+        self.frames.append(obs)
         obs = self._transform(obs)
 
         for _ in range(self.k):
-            self.frames.append(obs)
+            self.stack.append(obs)
 
         return self._get_obs(), {}
 
@@ -453,9 +458,10 @@ class Wrapper(gym.Wrapper):
 
         for _ in range(self.k):
             obs, reward, term, *_ = self.env.step(action)
+            self.frames.append(obs)
             obs = self._transform(obs)
 
-            self.frames.append(obs)
+            self.stack.append(obs)
 
             total_reward += float(reward)
             if term:

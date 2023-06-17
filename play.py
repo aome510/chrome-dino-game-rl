@@ -15,6 +15,9 @@ while True:
         action = envs.Action.DUCK
 
     _, reward, terminated, _, _ = env.step(action)
+
+    print(reward)
+
     total_reward += float(reward)
     if terminated:
         break
