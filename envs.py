@@ -18,8 +18,9 @@ TRAIN_FRAME_LIMIT = 500
 MAX_SPEED = 100
 MAX_CACTUS_SPAWN_PROB = 0.7
 BASE_CACTUS_SPAWN_PROB = 0.3
-BIRD_SPAWN_PROB = 0.2
+BIRD_SPAWN_PROB = 0.3
 RENDER_FPS = 15
+COLLISION_THRESHOLD = 20
 
 
 class Action(int, enum.Enum):
@@ -53,17 +54,12 @@ class Assets:
         self.dino_runs = [
             pygame.image.load(os.path.join("assets", "DinoRun1.png")),
             pygame.image.load(os.path.join("assets", "DinoRun2.png")),
-            # pygame.image.load(os.path.join("assets", "NyanCat1.png")),
-            # pygame.image.load(os.path.join("assets", "NyanCat2.png")),
         ]
         self.dino_ducks = [
-            # pygame.image.load(os.path.join("assets", "NyanCat1.png")),
-            # pygame.image.load(os.path.join("assets", "NyanCat2.png")),
             pygame.image.load(os.path.join("assets", "DinoDuck1.png")),
             pygame.image.load(os.path.join("assets", "DinoDuck2.png")),
         ]
         self.dino_jump = pygame.image.load(os.path.join("assets", "DinoJump.png"))
-        # self.dino_jump = pygame.image.load(os.path.join("assets", "NyanCat1.png"))
 
         # cactus
         self.cactuses = [
@@ -98,8 +94,13 @@ class EnvObject(ABC):
 class Obstacle(EnvObject, ABC):
     needs_collision_check = True
 
-    def collide(self, other: pygame.Rect) -> bool:
-        return False
+    def collide(self, o: pygame.Rect) -> bool:
+        return self.rect.colliderect(
+            o.left + COLLISION_THRESHOLD,
+            o.top + COLLISION_THRESHOLD,
+            o.width - 2 * COLLISION_THRESHOLD,
+            o.height - 2 * COLLISION_THRESHOLD,
+        )
 
     def is_inside(self) -> bool:
         return False
@@ -110,7 +111,7 @@ class Bird(Obstacle):
         self._assets = assets.birds
         self.rect = self._assets[0].get_rect()
         self.rect.x = WINDOW_SIZE[0]
-        self.rect.y = 375
+        self.rect.y = 360
 
     def step(self, speed: int):
         self.rect.x -= speed
@@ -118,9 +119,6 @@ class Bird(Obstacle):
             self._assets[1],
             self._assets[0],
         )
-
-    def collide(self, other: pygame.Rect) -> bool:
-        return self.rect.colliderect(other)
 
     def is_inside(self) -> bool:
         return self.rect.x + self._assets[0].get_width() > 0
@@ -141,9 +139,6 @@ class Cactus(Obstacle):
 
     def step(self, speed: int):
         self.rect.x -= speed
-
-    def collide(self, other: pygame.Rect) -> bool:
-        return self.rect.colliderect(other)
 
     def is_inside(self) -> bool:
         return self.rect.x + self._asset.get_width() > 0
