@@ -48,7 +48,7 @@ class Trainer:
         lr=1e-4,
         batch_size=32,
         replay_size=10_000,  # experience replay's buffer size
-        learning_start=50_000,  # number of frames before learning starts
+        learning_start=10_000,  # number of frames before learning starts
         target_update_freq=1_000,  # number of frames between every target network update
         optimize_freq=1,
         gamma=0.99,  # reward decay factor
@@ -114,7 +114,9 @@ class Trainer:
         action_batch = torch.stack(batch.action)
         next_state_batch = torch.stack(batch.next_state)
         reward_batch = torch.stack(batch.reward)
-        terminated_batch = torch.tensor(batch.terminated, device=device)
+        terminated_batch = torch.tensor(
+            batch.terminated, device=device, dtype=torch.float
+        )
 
         # Compute batch "Q(s, a)"
         # The model returns "Q(s)", then we select the columns of actions taken.
@@ -179,7 +181,7 @@ class Trainer:
                 # optimize the policy network
                 if (
                     self.n_steps > self.learning_start
-                    and self.n_steps % self.optimize_freq
+                    and self.n_steps % self.optimize_freq == 0
                 ):
                     self._optimize()
 
