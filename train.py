@@ -16,8 +16,6 @@ from model import DQN
 # A majority of the codes in this file is based on Pytorch's DQN tutorial [1]
 # [1]: https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html
 
-device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")  # type: ignore
-
 
 Transition = namedtuple(
     "Transition", ("state", "action", "next_state", "reward", "terminated")
@@ -42,8 +40,6 @@ class Trainer:
     def __init__(
         self,
         env: envs.Wrapper,
-        policy_net: DQN,
-        target_net: DQN,
         n_episodes=1_000,
         lr=1e-4,
         batch_size=32,
@@ -57,15 +53,23 @@ class Trainer:
         eps_end=0.01,
         eps_decay=10_000,
     ):
-        self.n_steps = 0
-
         self.env = env
 
-        self.policy_net = policy_net
-        self.target_net = target_net
+        # Define the DQN networks
+        obs_space = self.env.observation_space.shape
+        assert obs_space is not None
+        in_channels = obs_space[0]
+        out_channels = self.env.action_space.n  # type: ignore
+
+        self.policy_net = DQN(in_channels, out_channels).to(self.device)
+        self.target_net = DQN(in_channels, out_channels).to(self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
 
         self.memory_replay = MemoryReplay(replay_size)
+
+        self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")  # type: ignore
+
+        self.n_steps = 0
 
         self.n_episodes = n_episodes
         self.batch_size = batch_size
@@ -102,7 +106,7 @@ class Trainer:
                 return self.policy_net(state.unsqueeze(0)).max(dim=1)[1][0]
         else:
             # explore
-            return torch.tensor(self.env.action_space.sample(), device=device)
+            return torch.tensor(self.env.action_space.sample(), device=self.device)
 
     def _optimize(self):
         transitions = self.memory_replay.sample(self.batch_size)
@@ -115,7 +119,7 @@ class Trainer:
         next_state_batch = torch.stack(batch.next_state)
         reward_batch = torch.stack(batch.reward)
         terminated_batch = torch.tensor(
-            batch.terminated, device=device, dtype=torch.float
+            batch.terminated, device=self.device, dtype=torch.float
         )
 
         # Compute batch "Q(s, a)"
@@ -147,7 +151,7 @@ class Trainer:
     def train(self):
         for episode_i in range(self.n_episodes):
             state, _ = self.env.reset()
-            state = torch.tensor(state, device=device)
+            state = torch.tensor(state, device=self.device)
 
             total_reward = 0.0
 
@@ -159,7 +163,7 @@ class Trainer:
                 next_state, reward, terminated, *_ = self.env.step(
                     envs.Action(action.item())
                 )
-                next_state = torch.tensor(next_state, device=device)
+                next_state = torch.tensor(next_state, device=self.device)
 
                 total_reward += float(reward)
 
@@ -167,7 +171,7 @@ class Trainer:
                     state,
                     action,
                     next_state,
-                    torch.tensor(reward, device=device),
+                    torch.tensor(reward, device=self.device),
                     terminated,
                 )
 
@@ -218,18 +222,8 @@ class Trainer:
 
 
 if __name__ == "__main__":
-    # Initialize the gym environment
     env = gym.make("Env-v0", render_mode="rgb_array", game_mode="train")
     env = envs.Wrapper(env, k=4)
 
-    # Define the DQN networks
-    obs_space = env.observation_space.shape
-    assert obs_space is not None
-    in_channels = obs_space[0]
-    out_channels = env.action_space.n  # type: ignore
-
-    policy_net = DQN(in_channels, out_channels).to(device)
-    target_net = DQN(in_channels, out_channels).to(device)
-
-    trainer = Trainer(env, policy_net, target_net)
+    trainer = Trainer(env)
     trainer.train()
