@@ -48,9 +48,7 @@ def ai_play(model_path: str):
     state = torch.tensor(state, device=device)
 
     total_reward = 0.0
-    n_frames = 0
     while True:
-        n_frames += 1
         action = policy_net(state.unsqueeze(0)).max(dim=1)[1][0]
 
         state, reward, terminated, _, _ = env.step(action)
@@ -60,7 +58,7 @@ def ai_play(model_path: str):
         if terminated:
             break
 
-    print(f"Total reward: {total_reward}, number of frames: {n_frames}")
+    print(f"Total reward: {total_reward}, number of frames: {len(env.frames)}")
 
     env.close()
 
