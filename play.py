@@ -4,6 +4,9 @@ import torch
 import envs
 import argparse
 import matplotlib.pyplot as plt
+import numpy as np
+
+from model import DQN
 
 
 def human_play():
@@ -36,15 +39,17 @@ def human_play():
     plt.show()
 
 
-def ai_play(model_path: str):
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")  # type: ignore
+def play_with_model(
+    env: envs.Wrapper,
+    policy_net: DQN,
+    device: torch.device,
+    seed: int | None = None,
+) -> float:
+    if seed is not None:
+        state, _ = env.reset(seed=seed)
+    else:
+        state, _ = env.reset()
 
-    policy_net = torch.load(model_path).to(device)
-
-    env = gym.make("Env-v0", render_mode="human")
-    env = envs.Wrapper(env)
-
-    state, _ = env.reset()
     state = torch.tensor(state, device=device)
 
     total_reward = 0.0
@@ -57,6 +62,19 @@ def ai_play(model_path: str):
         total_reward += float(reward)
         if terminated:
             break
+
+    return total_reward
+
+
+def ai_play(model_path: str):
+    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")  # type: ignore
+
+    policy_net = torch.load(model_path).to(device)
+
+    env = gym.make("Env-v0", render_mode="human")
+    env = envs.Wrapper(env)
+
+    total_reward = play_with_model(env, policy_net, device)
 
     print(f"Total reward: {total_reward}, number of frames: {len(env.frames)}")
 
