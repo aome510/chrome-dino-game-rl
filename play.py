@@ -70,6 +70,7 @@ def ai_play(model_path: str):
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")  # type: ignore
 
     policy_net = torch.load(model_path).to(device)
+    policy_net.eval()
 
     env = gym.make("Env-v0", render_mode="human")
     env = envs.Wrapper(env)

@@ -282,8 +282,6 @@ class Env(gym.Env):
         self._game_mode = game_mode
         self._train_frame_limit = train_frame_limit
 
-        self._assets = Assets()
-
         # Initialize `pygame` data
         self._window = None
         self._clock = None
@@ -300,6 +298,8 @@ class Env(gym.Env):
         super().__init__()
 
     def _init_game_data(self):
+        self._assets = Assets()
+
         """Initialize game's data, which should be re-initialized when the environment is reset"""
         self._frame = 0
         self._speed = 20
@@ -443,11 +443,11 @@ class Wrapper(gym.Wrapper):
         assert len(self.stack) == self.k
         return np.stack(self.stack)
 
-    def reset(self) -> tuple[np.ndarray, dict]:
+    def reset(self, *args, **kwargs) -> tuple[np.ndarray, dict]:
         self.frames = []
         self.stack = deque([], maxlen=self.k)
 
-        obs, _ = self.env.reset()
+        obs, _ = self.env.reset(*args, **kwargs)
         self.frames.append(obs)
         obs = self._transform(obs)
 
