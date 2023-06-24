@@ -9,18 +9,19 @@ import numpy as np
 import pygame
 from gymnasium.envs.registration import register
 
-# environment's constants
+# Environment's constants
 WINDOW_SIZE = (1024, 512)  # (w, h)
+# It took (JUMP_DURATION / 2) to jump to the peak and another (JUMP_DURATION / 2) to fall to the ground
 JUMP_DURATION = 12
 JUMP_VEL = 100
 OBSTACLE_MIN_CNT = 400
-TRAIN_FRAME_LIMIT = 500
 MAX_SPEED = 100
 MAX_CACTUS_SPAWN_PROB = 0.7
 BASE_CACTUS_SPAWN_PROB = 0.3
 BIRD_SPAWN_PROB = 0.3
 RENDER_FPS = 15
 COLLISION_THRESHOLD = 20
+DIFFICULTY_INCREASE_FREQ = 20
 
 
 class Action(int, enum.Enum):
@@ -37,7 +38,8 @@ class DinoState(int, enum.Enum):
 
 class GameMode(str, enum.Enum):
     NORMAL = "normal"
-    # train mode allows the agent to collide with obstacles and will get negative rewards
+    # In the train mode, when the agent collide with obstacles,
+    # it gets negative rewards instead of losing the game.
     TRAIN = "train"
 
 
@@ -48,9 +50,10 @@ class RenderMode(str, enum.Enum):
 
 class Assets:
     def __init__(self):
+        # running track
         self.track = pygame.image.load(os.path.join("assets", "Track.png"))
 
-        # dino assets
+        # dino
         self.dino_runs = [
             pygame.image.load(os.path.join("assets", "DinoRun1.png")),
             pygame.image.load(os.path.join("assets", "DinoRun2.png")),
@@ -92,6 +95,8 @@ class EnvObject(ABC):
 
 
 class Obstacle(EnvObject, ABC):
+    # A flag indicates if the agent already passes or collides the obstacle.
+    # This is used to avoid "duplicating" rewards for passing/colliding an obstacle.
     needs_collision_check = True
 
     def collide(self, o: pygame.Rect) -> bool:
@@ -115,6 +120,7 @@ class Bird(Obstacle):
 
     def step(self, speed: int):
         self.rect.x -= speed
+        # Alternate the assets to create a moving animation
         self._assets[0], self._assets[1] = (
             self._assets[1],
             self._assets[0],
@@ -160,6 +166,7 @@ class Dino(EnvObject):
         self.state = DinoState.STAND
 
     def step(self, action: Action):
+        # Alternate the assets to create a moving animation
         self._run_assets[0], self._run_assets[1] = (
             self._run_assets[1],
             self._run_assets[0],
@@ -205,6 +212,7 @@ class Dino(EnvObject):
     def _get_jump_offset(self) -> int:
         a = -JUMP_VEL / (JUMP_DURATION / 2)
         t = JUMP_DURATION - self._jump_timer
+        # Compute the jump distance from acceleration, initial speed, and time
         d = int(JUMP_VEL * t + 0.5 * a * (t**2))
         return d
 
@@ -222,7 +230,7 @@ class Track(EnvObject):
         self._track_h = self._asset.get_height()
 
     def step(self, speed: int):
-        # Negative offset to slide the running track image to the left
+        # Negative offset means moving the running track image to the left
         self._track_offset_x -= speed
 
     def render(self, canvas: pygame.Surface):
@@ -260,17 +268,19 @@ class Env(gym.Env):
         self,
         render_mode: RenderMode | None,
         game_mode: GameMode = GameMode.NORMAL,
+        train_frame_limit=500,  # the upper limit for number of frames during the train mode
     ) -> None:
         # Initialize `gym.Env` required fields
         self.render_mode = render_mode
 
         self.action_space = gym.spaces.Discrete(len(list(Action)))
-        # the observation space is the rgb image of the current frame
+        # The observation space is the dimension of the current frame (rgb image)
         self.observation_space = gym.spaces.Box(
             0, 255, shape=(WINDOW_SIZE[1], WINDOW_SIZE[0], 3), dtype=np.uint8
         )
 
         self._game_mode = game_mode
+        self._train_frame_limit = train_frame_limit
 
         self._assets = Assets()
 
@@ -294,11 +304,12 @@ class Env(gym.Env):
         self._frame = 0
         self._speed = 20
         self._spawn_prob = BASE_CACTUS_SPAWN_PROB
+        # The counter (in pixels) for spawning a new obstacle
         self._obstacle_cnt = OBSTACLE_MIN_CNT
 
         # Initialize environment's objects' states
         self._track = Track(self._assets)
-        self._dino = Dino(self._assets)
+        self._agent = Dino(self._assets)
         self._obstacles: list[Obstacle] = []
 
     def reset(
@@ -318,38 +329,36 @@ class Env(gym.Env):
 
         self._frame += 1
         self._obstacle_cnt += self._speed
-        # increase the difficulty of the game every 20 frames
-        if self._frame % 20 == 0:
+        # Increase the difficulty of the game every fixed number of frames
+        if self._frame % DIFFICULTY_INCREASE_FREQ == 0:
             self._speed = min(MAX_SPEED, self._speed + 1)
             self._spawn_prob = min(MAX_CACTUS_SPAWN_PROB, self._spawn_prob * 1.01)
 
         self._track.step(self._speed)
-        self._dino.step(action)
+        self._agent.step(action)
         for o in self._obstacles:
             o.step(self._speed)
 
-        # Filter inside obstacles after each step
+        # Filter out outside obstacles after each step
         self._obstacles = [o for o in self._obstacles if o.is_inside()]
 
-        # Check if the dinosaur collides with an obstacle
-        _, dino_rect = self._dino.get_data()
+        # Check if the agent collides with an obstacle
+        _, agent_rect = self._agent.get_data()
         for o in self._obstacles:
             if not o.needs_collision_check:
                 continue
-            if o.collide(dino_rect):
+            if o.collide(agent_rect):
                 o.needs_collision_check = False
-                match self._game_mode:
-                    case GameMode.NORMAL:
-                        terminated = True
-                    case GameMode.TRAIN:
-                        reward -= 1.0
+                reward -= 1.0
+                if self._game_mode == GameMode.NORMAL:
+                    terminated = True
             else:
-                # dino passes an obstacle without colliding with the object, give a reward
-                if dino_rect.left > o.rect.right:
+                # Agent passes an obstacle without colliding with the object, give a reward
+                if agent_rect.left > o.rect.right:
                     o.needs_collision_check = False
                     reward += 1.0
 
-        if self._game_mode == GameMode.TRAIN and self._frame >= TRAIN_FRAME_LIMIT:
+        if self._game_mode == GameMode.TRAIN and self._frame >= self._train_frame_limit:
             terminated = True
 
         # Should we spawn a new obstacle?
@@ -381,7 +390,7 @@ class Env(gym.Env):
         canvas.fill((255, 255, 255))
 
         self._track.render(canvas)
-        self._dino.render(canvas)
+        self._agent.render(canvas)
         for o in self._obstacles:
             o.render(canvas)
 
@@ -393,7 +402,7 @@ class Env(gym.Env):
 
             self._clock.tick(self.metadata["render_fps"])
 
-        # return the canvas as a rgb array
+        # Return the canvas as a rgb array
         return np.transpose(np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2))
 
     def close(self):

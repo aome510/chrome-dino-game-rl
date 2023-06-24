@@ -40,6 +40,8 @@ class Trainer:
     def __init__(
         self,
         env: envs.Wrapper,
+        policy_net: DQN,
+        target_net: DQN,
         n_episodes=1_000,
         lr=1e-4,
         batch_size=32,
@@ -55,14 +57,8 @@ class Trainer:
     ):
         self.env = env
 
-        # Define the DQN networks
-        obs_space = self.env.observation_space.shape
-        assert obs_space is not None
-        in_channels = obs_space[0]
-        out_channels = self.env.action_space.n  # type: ignore
-
-        self.policy_net = DQN(in_channels, out_channels).to(self.device)
-        self.target_net = DQN(in_channels, out_channels).to(self.device)
+        self.policy_net = policy_net.to(self.device)
+        self.target_net = target_net.to(self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
 
         self.memory_replay = MemoryReplay(replay_size)
@@ -141,7 +137,7 @@ class Trainer:
         criterion = nn.SmoothL1Loss()
         loss = criterion(Q_values, expected_Q_values)
 
-        print(f"Loss: {loss.item()}")
+        # print(f"Loss: {loss.item()}")
 
         # Optimize the model
         self.optimizer.zero_grad()
@@ -175,14 +171,14 @@ class Trainer:
                     terminated,
                 )
 
-                # synchronize the target network with the policy network
+                # Synchronize the target network with the policy network
                 if (
                     self.n_steps > self.learning_start
                     and self.n_steps % self.target_update_freq == 0
                 ):
                     self.target_net.load_state_dict(self.policy_net.state_dict())
 
-                # optimize the policy network
+                # Optimize the policy network
                 if (
                     self.n_steps > self.learning_start
                     and self.n_steps % self.optimize_freq == 0
@@ -225,5 +221,14 @@ if __name__ == "__main__":
     env = gym.make("Env-v0", render_mode="rgb_array", game_mode="train")
     env = envs.Wrapper(env, k=4)
 
-    trainer = Trainer(env)
+    # Define the DQN networks
+    obs_space = env.observation_space.shape
+    assert obs_space is not None
+    in_channels = obs_space[0]
+    out_channels = self.env.action_space.n  # type: ignore
+
+    policy_net = DQN(in_channels, out_channels)
+    target_net = DQN(in_channels, out_channels)
+
+    trainer = Trainer(env, policy_net, target_net)
     trainer.train()

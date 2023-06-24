@@ -31,7 +31,7 @@ def human_play():
 
     env.close()
 
-    # show image of the last frame
+    # Show image of the last frame
     plt.imshow(obs)
     plt.show()
 
@@ -62,7 +62,7 @@ def ai_play(model_path: str):
 
     env.close()
 
-    # show image of the last frame
+    # Show image of the last frame
     plt.imshow(env.frames[-1])
     plt.show()
 
