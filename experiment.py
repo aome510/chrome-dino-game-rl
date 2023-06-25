@@ -91,7 +91,6 @@ if __name__ == "__main__":
     axs[1].set_ylabel("Frames")
 
     plt.subplots_adjust(wspace=0.5)
-    plt.show()
-
     if args.save_plot:
         plt.savefig("experiments/plot.png")
+    plt.show()
