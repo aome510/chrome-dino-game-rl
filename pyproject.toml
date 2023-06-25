@@ -5,7 +5,6 @@ description = "Play Chrome's Dinosuar Game with Reinforcement Learning"
 authors = ["Thang Pham <phamducthang1234@gmail.com>"]
 license = "MIT"
 readme = "README.md"
-packages = [{include = "chrome_dino_game_rl"}]
 
 [tool.poetry.dependencies]
 python = "3.11.*"
