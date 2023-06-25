@@ -2,11 +2,11 @@
 
 ## Introduction
 
-This project implements and trains an agent to play the [Dinosaur Game](https://en.wikipedia.org/wiki/Dinosaur_Game) using [Deep Q Network (DQN)](https://www.deepmind.com/publications/playing-atari-with-deep-reinforcement-learning). The network architecture for **DQN** to train the agent is similar to what proposed in the original paper.
+This project implements and trains an agent to play the [Dinosaur Game](https://en.wikipedia.org/wiki/Dinosaur_Game) using [Deep Q Network (DQN)](https://en.wikipedia.org/wiki/Q-learning#Deep_Q-learning). The network architecture for **DQN** to train the agent is similar to what proposed in the [original paper](https://www.deepmind.com/publications/playing-atari-with-deep-reinforcement-learning).
 
-The project also implements a custom [gymnasium](https://github.com/Farama-Foundation/Gymnasium) (previously _OpenAI gym_) environment for training a reinforcement learning agent to play the Dinosaur Game. For more details, see the `envs.py` file.
+The project also implements a custom [gymnasium](https://gymnasium.farama.org) (previously _OpenAI gym_) environment for training a reinforcement learning agent to play the Dinosaur Game. For more details, see the `envs.py` file.
 
-**Notes**: this environment is a simplified replication of the Dinosaur Game, hence missing some features/game mechanisms.
+**Note**: this environment is a simplified replication of the Dinosaur Game, hence missing some features/game mechanisms.
 
 ## Setup
 
@@ -20,7 +20,7 @@ poetry install
 
 Then run `poetry shell` to spawn a shell within the virtual environment containing the project's dependencies.
 
-**Notes**: this project specifies **Python** version `3.11.*`. To use another **Python** version, please update `pyproject.toml` accordingly.
+**Note**: this project specifies **Python** version `3.11.*`. To use another **Python** version, please update `pyproject.toml` accordingly.
 
 ### Usage
 
