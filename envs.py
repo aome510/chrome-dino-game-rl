@@ -6,6 +6,7 @@ from typing import Any
 from PIL import Image
 import gymnasium as gym
 import numpy as np
+import pygame.freetype
 import pygame
 from gymnasium.envs.registration import register
 
@@ -286,6 +287,10 @@ class Env(gym.Env):
         self._window = None
         self._clock = None
 
+        pygame.freetype.init()
+        self._game_font = pygame.freetype.SysFont(
+            pygame.freetype.get_default_font(), 24
+        )
         if self.render_mode == RenderMode.HUMAN:
             pygame.init()
             pygame.display.init()
@@ -393,6 +398,10 @@ class Env(gym.Env):
         self._agent.render(canvas)
         for o in self._obstacles:
             o.render(canvas)
+
+        # Display the current scores (number of frames)
+        text_surface, _ = self._game_font.render(f"score: {self._frame}", (0, 0, 0))
+        canvas.blit(text_surface, (10, 10))
 
         if self._window is not None and self._clock is not None:
             self._window.blit(canvas, canvas.get_rect())
